@@ -254,7 +254,18 @@
 
           if (error) throw error;
 
-          const verifiedEmail = data.user?.email ?? email ?? '';
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError) throw sessionError;
+          if (!sessionData.session) {
+            throw new Error('Invite verified, but no auth session was created. Please request a fresh invite email.');
+          }
+
+          const verifiedEmail =
+            sessionData.session.user?.email ??
+            data.user?.email ??
+            email ??
+            '';
+
           return { email: verifiedEmail };
         }
 
@@ -270,6 +281,9 @@
 
           if (setSessionError) throw setSessionError;
 
+          // Clean the URL after setting session
+          window.history.replaceState({}, document.title, window.location.pathname);
+
           const { data: userData, error: userError } = await supabase.auth.getUser();
           if (userError) throw userError;
 
@@ -277,11 +291,11 @@
         }
 
         // Flow C: session may already exist
-        const { data: existingSession } = await supabase.auth.getSession();
+        const { data: existingSession, error: existingSessionError } = await supabase.auth.getSession();
+        if (existingSessionError) throw existingSessionError;
+
         if (existingSession.session) {
-          const { data: userData, error: userError } = await supabase.auth.getUser();
-          if (userError) throw userError;
-          return { email: userData.user?.email ?? '' };
+          return { email: existingSession.session.user?.email ?? '' };
         }
 
         throw new Error('Invite session could not be established. Please request a fresh invite email.');
@@ -312,6 +326,12 @@
 
         if (password !== confirmPassword) {
           setStatus('Passwords do not match.', 'error');
+          return;
+        }
+
+        const { data: sessionCheck } = await supabase.auth.getSession();
+        if (!sessionCheck.session) {
+          setStatus('Auth session missing. Please open the invite link again from your email.', 'error');
           return;
         }
 
